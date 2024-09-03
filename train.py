@@ -50,7 +50,7 @@ def train(config):
     criterion = nn.MSELoss().to(device)
     model = RECTNET().to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.999))
-    scheduler = StepLR(optimizer, step_size=100, gamma=0.8)
+    scheduler = StepLR(optimizer, step_size=100, gamma=0.85)
     # 余弦衰减
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100, eta_min=1e-6)
     epoch = 1
@@ -112,10 +112,10 @@ def train(config):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--batch_size", default=64, type=int,
+    parser.add_argument("--batch_size", default=32, type=int,
                         help="Batch size used in the training and validation loop.")
     parser.add_argument("--epochs", default=1200, type=int, help="Total number of epochs.")
-    parser.add_argument("--lr", default=0.0005, type=float,
+    parser.add_argument("--lr", default=0.0008, type=float,
                         help="Base learning rate at the start of the training.")
     parser.add_argument("--ckpt", default=20, type=int, help="Save model every ckpt epochs.")
     parser.add_argument("--train_set_path", default="/Data2/Datasets/PanCollection/training_data/train_wv3_9714.h5",
