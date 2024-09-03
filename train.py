@@ -1,4 +1,5 @@
 import os
+
 os.environ["WANDB_API_KEY"] = "76ab78978f41b7190f2b6ca4a7a7836a27eb19ef"
 import argparse
 import time
@@ -21,18 +22,22 @@ torch.cuda.manual_seed(SEED)
 torch.cuda.manual_seed_all(SEED)
 cudnn.deterministic = True
 
+
 def save_checkpoint(model, optimizer, epoch):  # save model function
-    check_point = {'model': model.state_dict(), 
-                   'optimizer': optimizer.state_dict(), 
+    check_point = {'model': model.state_dict(),
+                   'optimizer': optimizer.state_dict(),
                    'epoch': epoch
                    }
-    save_path = 'checkpoints' + '/' + f"checkpoint_{epoch}_" + time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime()) + ".pth"
+    save_path = 'checkpoints' + '/' + f"checkpoint_{epoch}_" + time.strftime("%Y-%m-%d-%H-%M-%S",
+                                                                             time.localtime()) + ".pth"
     save_dir = os.path.dirname(save_path)
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     torch.save(check_point, save_path)
 
-def train(train_set, validate_set, config):
+
+def train(config):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     epochs, lr, ckpt, batch_size, train_set_path, train_validate_path, checkpoint_path = \
         config.epochs, config.learning_rate, config.ckpt, config.batch_size, config.train_set_path, config.validate_set_path, config.checkpoint_path
     train_set = DataSet(train_set_path)
@@ -40,8 +45,15 @@ def train(train_set, validate_set, config):
     training_data_loader = DataLoader(dataset=train_set, num_workers=0, batch_size=batch_size, shuffle=True,
                                       pin_memory=True, drop_last=True)
     validate_data_loader = DataLoader(dataset=validate_set, num_workers=0, batch_size=batch_size, shuffle=True,
-                                        pin_memory=True, drop_last=True)
+                                      pin_memory=True, drop_last=True)
+
     criterion = nn.MSELoss().to(device)
+    model = RECTNET().to(device)
+    optimizer = optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.999))
+    scheduler = StepLR(optimizer, step_size=100, gamma=0.8)
+    # 余弦衰减
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100, eta_min=1e-6)
+    epoch = 1
 
     if os.path.isfile(checkpoint_path):
         checkpoint = torch.load(checkpoint_path, map_location=device)
@@ -49,15 +61,8 @@ def train(train_set, validate_set, config):
         optimizer.load_state_dict(checkpoint['optimizer'])
         epoch = checkpoint['epoch']
         print(f"=> successfully loaded checkpoint from '{checkpoint_path}'")
-    else:
-        optimizer = optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.999))
-        scheduler = StepLR(optimizer, step_size=100, gamma=0.8)
-        #余弦衰减
-        #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100, eta_min=1e-6)
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model = RECTNET().to(device)
-        model = nn.DataParallel(model)
-        epoch = 1
+
+    model = nn.DataParallel(model)
 
     print('Start training...')
     nx, ny = [0 for _ in range(10)], [0 for _ in range(10)]
@@ -104,6 +109,7 @@ def train(train_set, validate_set, config):
         epoch = epoch + 1
     wandb.finish()
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch_size", default=64, type=int,
@@ -112,8 +118,10 @@ if __name__ == '__main__':
     parser.add_argument("--lr", default=0.0005, type=float,
                         help="Base learning rate at the start of the training.")
     parser.add_argument("--ckpt", default=20, type=int, help="Save model every ckpt epochs.")
-    parser.add_argument("--train_set_path", default="training_data/train_wv3.h5", type=str, help="Path to the training set.")
-    parser.add_argument("--validate_set_path", default="training_data/valid_wv3.h5", type=str, help="Path to the validation set.")
+    parser.add_argument("--train_set_path", default="/Data2/Datasets/PanCollection/training_data/train_wv3_9714.h5",
+                        type=str, help="Path to the training set.")
+    parser.add_argument("--validate_set_path", default="/Data2/Datasets/PanCollection/training_data/valid_wv3_9714.h5",
+                        type=str, help="Path to the validation set.")
     parser.add_argument("--checkpoint_path", default="", type=str, help="Path to the checkpoint file.")
     config = parser.parse_args()
     wandb.login()

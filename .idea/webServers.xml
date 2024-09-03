@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="2b658aec-5aa5-47a3-a619-956ea9915dfc" name="6号机">
+        <fileTransfer accessType="SFTP" host="a660.u1stc.top" port="1336" sshConfigId="20de605f-d732-4487-b5f9-4033629c0462" sshConfig="office-401-remote@a660.u1stc.top:1336 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>
