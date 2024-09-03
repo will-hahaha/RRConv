@@ -1,6 +1,7 @@
 import os
 os.environ["WANDB_API_KEY"] = "76ab78978f41b7190f2b6ca4a7a7836a27eb19ef"
 import argparse
+import time
 import torch
 import torch.backends.cudnn as cudnn
 import torch.nn as nn
@@ -25,7 +26,7 @@ def save_checkpoint(model, optimizer, epoch):  # save model function
                    'optimizer': optimizer.state_dict(), 
                    'epoch': epoch
                    }
-    save_path = 'rotate_final_simple' + '/' + f"{epoch}.pth"
+    save_path = 'checkpoints' + '/' + f"checkpoint_{epoch}_" + time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime()) + ".pth"
     save_dir = os.path.dirname(save_path)
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
