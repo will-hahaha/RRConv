@@ -32,7 +32,8 @@ def save_checkpoint(model, optimizer, epoch):  # save model function
     torch.save(check_point, save_path)
 
 def train(train_set, validate_set, config):
-    epochs, lr, ckpt, batch_size, train_set_path, train_validate_path, checkpoint_path = config.epochs, config.learning_rate, config.ckpt, config.batch_size, config.train_set_path, config.validate_set_path, config.checkpoint_path
+    epochs, lr, ckpt, batch_size, train_set_path, train_validate_path, checkpoint_path = \
+        config.epochs, config.learning_rate, config.ckpt, config.batch_size, config.train_set_path, config.validate_set_path, config.checkpoint_path
     train_set = DataSet(train_set_path)
     validate_set = DataSet(train_validate_path)
     training_data_loader = DataLoader(dataset=train_set, num_workers=0, batch_size=batch_size, shuffle=True,
@@ -52,7 +53,7 @@ def train(train_set, validate_set, config):
         scheduler = StepLR(optimizer, step_size=100, gamma=0.8)
         #余弦衰减
         #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100, eta_min=1e-6)
-        device = torch.device("cuda: 0" if torch.cuda.is_available() else "cpu")
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = RECTNET().to(device)
         model = nn.DataParallel(model)
         epoch = 1
