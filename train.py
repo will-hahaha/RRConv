@@ -62,7 +62,7 @@ def train(train_set, validate_set, config):
     nx, ny = [0 for _ in range(10)], [0 for _ in range(10)]
     while epoch <= epochs + 1:
         if epoch == 101:
-            tensor = [torch.tensor(sio.loadmat(f"x_{i}.mat")['x']).to(device) for i in range(1, 11)]
+            tensor = [torch.tensor(sio.loadmat(f"models/models_mats/x_{i}.mat")['x']).to(device) for i in range(1, 11)]
             for i in range(10):
                 nx[i], ny[i] = tensor[i].split([1, 1], dim=-1)
                 nx[i] = int(nx[i])

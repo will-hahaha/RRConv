@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import scipy.io as sio
 from models.RRConv import RectConv2d
 
 class RectB(nn.Module):

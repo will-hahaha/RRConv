@@ -153,7 +153,7 @@ class RectConv2d(nn.Module):
                 N_Y = 3
             tensor_x = torch.tensor([N_X, N_Y], dtype=torch.float32).cuda()
             tensor_x = tensor_x.cpu().numpy()
-            sio.savemat('x_' + str(label) + '.mat', {'x': tensor_x})
+            sio.savemat('models_mats/x_' + str(label) + '.mat', {'x': tensor_x})
         else:
             N_X = nx
             N_Y = ny
