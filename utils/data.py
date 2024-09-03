@@ -25,7 +25,7 @@ class DataSet(data.Dataset):
         gt1 = data["gt"][...]  # convert to np tpye for CV2.filter
         gt1 = np.array(gt1, dtype=np.float32) / 2047
         self.gt = torch.from_numpy(gt1)  # NxCxHxW:
-        print(self.gt.shape)
+        # print(self.gt.shape)
 
         lms1 = data["lms"][...]  # convert to np tpye for CV2.filter
         lms1 = np.array(lms1, dtype=np.float32) / 2047
