@@ -124,7 +124,7 @@ class RectConv2d(nn.Module):
         mean_l = l.mean(dim=0).mean(dim=1).mean(dim=1)
         mean_w = w.mean(dim=0).mean(dim=1).mean(dim=1)
         mean_theta = theta.mean(dim=0).mean(dim=1).mean(dim=1)
-        print(mean_l, mean_w, mean_theta)
+        # print(mean_l, mean_w, mean_theta)
         if epoch < 100:
             mean_l = l.mean(dim=0).mean(dim=1).mean(dim=1)
             mean_w = w.mean(dim=0).mean(dim=1).mean(dim=1)
@@ -159,7 +159,7 @@ class RectConv2d(nn.Module):
             N_Y = ny
 
         N = N_X * N_Y
-        print(N_X, N_Y)
+        # print(N_X, N_Y)
         l = l.repeat([1, N, 1, 1])
         w = w.repeat([1, N, 1, 1])
         offset = torch.cat((l, w), dim=1)
