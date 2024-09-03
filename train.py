@@ -39,7 +39,7 @@ def save_checkpoint(model, optimizer, epoch):  # save model function
 def train(config):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     epochs, lr, ckpt, batch_size, train_set_path, train_validate_path, checkpoint_path = \
-        config.epochs, config.learning_rate, config.ckpt, config.batch_size, config.train_set_path, config.validate_set_path, config.checkpoint_path
+        config.epochs, config.lr, config.ckpt, config.batch_size, config.train_set_path, config.validate_set_path, config.checkpoint_path
     train_set = DataSet(train_set_path)
     validate_set = DataSet(train_validate_path)
     training_data_loader = DataLoader(dataset=train_set, num_workers=0, batch_size=batch_size, shuffle=True,
