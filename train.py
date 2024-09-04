@@ -38,8 +38,8 @@ def save_checkpoint(model, optimizer, epoch):  # save model function
 
 def train(config):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    epochs, lr, ckpt, batch_size, train_set_path, train_validate_path, checkpoint_path = \
-        config.epochs, config.lr, config.ckpt, config.batch_size, config.train_set_path, config.validate_set_path, config.checkpoint_path
+    epochs, lr, ckpt, batch_size, train_set_path, train_validate_path, checkpoint_path, training_model = \
+        config.epochs, config.lr, config.ckpt, config.batch_size, config.train_set_path, config.validate_set_path, config.checkpoint_path, config.training_model
     train_set = DataSet(train_set_path)
     validate_set = DataSet(train_validate_path)
     training_data_loader = DataLoader(dataset=train_set, num_workers=0, batch_size=batch_size, shuffle=True,
@@ -54,6 +54,8 @@ def train(config):
     # 余弦衰减
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100, eta_min=1e-6)
     epoch = 1
+    
+    model = nn.DataParallel(model)
 
     if os.path.isfile(checkpoint_path):
         checkpoint = torch.load(checkpoint_path, map_location=device)
@@ -61,8 +63,6 @@ def train(config):
         optimizer.load_state_dict(checkpoint['optimizer'])
         epoch = checkpoint['epoch']
         print(f"=> successfully loaded checkpoint from '{checkpoint_path}'")
-
-    model = nn.DataParallel(model)
 
     print('Start training...')
     nx, ny = [0 for _ in range(10)], [0 for _ in range(10)]
@@ -83,7 +83,10 @@ def train(config):
             lms = batch[1].to(device)
             pan = batch[4].to(device)
             optimizer.zero_grad()
-            output = model(pan, lms)
+            if training_model == 'RRConv':
+                output = model(pan, lms, epoch, *nx, *ny)
+            else:
+                output = model(pan, lms)
             loss = criterion(output, gt)
             epoch_train_loss.append(loss.item())
             loss.backward()
@@ -98,7 +101,10 @@ def train(config):
         with torch.no_grad():
             for iteration, batch in enumerate(validate_data_loader, 1):
                 gt, lms, pan = batch[0].to(device), batch[1].to(device), batch[4].to(device)
-                output = model(pan, lms)
+                if training_model == 'RECTNET':
+                    output = model(pan, lms, epoch, *nx, *ny)
+                else:
+                    output = model(pan, lms)
                 loss = criterion(output, gt)
                 epoch_val_loss.append(loss.item())
         v_loss = np.nanmean(np.array(epoch_val_loss))
@@ -123,6 +129,7 @@ if __name__ == '__main__':
     parser.add_argument("--validate_set_path", default="/Data2/Datasets/PanCollection/training_data/valid_wv3_9714.h5",
                         type=str, help="Path to the validation set.")
     parser.add_argument("--checkpoint_path", default="", type=str, help="Path to the checkpoint file.")
+    parser.add_argument("--model", default="RRConv", type=str, help="Model to train.")
     config = parser.parse_args()
     # wandb.login()
     # wandb.init(
