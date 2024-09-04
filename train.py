@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from utils.data import DataSet
-from models.DeformConv.model import RECTNET
+from models.RRConv.model import RECTNET
 import numpy as np
 from tqdm import tqdm
 import wandb
@@ -109,7 +109,7 @@ def train(config):
                 epoch_val_loss.append(loss.item())
         v_loss = np.nanmean(np.array(epoch_val_loss))
         print('validate loss: {:.7f}'.format(v_loss))
-        f = open('loss_final_simple.txt', 'a')
+        f = open('loss_ms.txt', 'a')
         f.write(f'epoch: {epoch} | train_loss: {t_loss} | val_loss: {v_loss}\n')
         wandb.log({"train_loss": t_loss, "val_loss": v_loss})
         epoch = epoch + 1
@@ -129,17 +129,17 @@ if __name__ == '__main__':
     parser.add_argument("--validate_set_path", default="/Data2/Datasets/PanCollection/training_data/valid_wv3_9714.h5",
                         type=str, help="Path to the validation set.")
     parser.add_argument("--checkpoint_path", default="", type=str, help="Path to the checkpoint file.")
-    parser.add_argument("--model", default="RRConv", type=str, help="Model to train.")
+    parser.add_argument("--training_model", default="RRConv", type=str, help="Model to train.")
     config = parser.parse_args()
-    # wandb.login()
-    # wandb.init(
-    #     project="RRConv",
-    #     config={
-    #         "learning_rate": config.lr,
-    #         "epochs": config.epochs,
-    #         "batch_size": config.batch_size,
-    #         "architecture": "RectNet",
-    #         "dataset": "WV3"
-    #     }
-    # )
+    wandb.login()
+    wandb.init(
+        project="RRConv",
+        config={
+            "learning_rate": config.lr,
+            "epochs": config.epochs,
+            "batch_size": config.batch_size,
+            "architecture": "RectNet",
+            "dataset": "WV3"
+        }
+    )
     train(config)

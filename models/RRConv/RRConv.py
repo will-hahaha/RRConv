@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import scipy.io as sio
+import os
 
 
 class mySin(torch.nn.Module):  # sin激活函数
@@ -156,7 +157,11 @@ class RectConv2d(nn.Module):
                 N_Y = 3
             tensor_x = torch.tensor([N_X, N_Y], dtype=torch.float32).cuda()
             tensor_x = tensor_x.cpu().numpy()
-            sio.savemat("models_mats/x_" + str(label) + ".mat", {"x": tensor_x})
+            save_path = "models_mats/x_" + str(label) + ".mat"
+            save_dir = os.path.dirname(save_path)
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+            sio.savemat(save_path, {"x": tensor_x})
         else:
             N_X = nx
             N_Y = ny
