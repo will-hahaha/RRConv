@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from models.RRConv import RectConv2d
+from RRConv import RectConv2d
 
 class RectB(nn.Module):
     def __init__(self, in_planes, flag=False):
