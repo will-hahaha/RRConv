@@ -1,6 +1,5 @@
+import logging
 import os
-
-os.environ["WANDB_API_KEY"] = "76ab78978f41b7190f2b6ca4a7a7836a27eb19ef"
 import argparse
 import time
 import torch
@@ -15,6 +14,16 @@ from tqdm import tqdm
 import wandb
 from torch.optim.lr_scheduler import StepLR
 import scipy.io as sio
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+os.environ["WANDB_API_KEY"] = "76ab78978f41b7190f2b6ca4a7a7836a27eb19ef"
+
+# Set up logging
+log_filename = f'training_log_{time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())}.log'
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s',
+                    handlers=[logging.FileHandler(log_filename),
+                              logging.StreamHandler()])  # Log to both file and console
+logger = logging.getLogger()
 
 SEED = 10
 torch.manual_seed(SEED)
@@ -22,10 +31,10 @@ torch.cuda.manual_seed(SEED)
 torch.cuda.manual_seed_all(SEED)
 cudnn.deterministic = True
 
-
-def save_checkpoint(model, optimizer, epoch):  # save model function
+def save_checkpoint(model, optimizer, scheduler, epoch):  # save model function
     check_point = {'model': model.state_dict(),
                    'optimizer': optimizer.state_dict(),
+                   'scheduler': scheduler.state_dict(),
                    'epoch': epoch
                    }
     save_path = 'checkpoints' + '/' + f"checkpoint_{epoch}_" + time.strftime("%Y-%m-%d-%H-%M-%S",
@@ -34,7 +43,6 @@ def save_checkpoint(model, optimizer, epoch):  # save model function
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     torch.save(check_point, save_path)
-
 
 def train(config):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -49,26 +57,28 @@ def train(config):
 
     criterion = nn.MSELoss().to(device)
     model = RECTNET().to(device)
-    optimizer = optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.999))
+    optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr, betas=(0.9, 0.999))
     scheduler = StepLR(optimizer, step_size=100, gamma=0.85)
-    # 余弦衰减
-    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100, eta_min=1e-6)
     epoch = 1
-    
     model = nn.DataParallel(model)
 
     if os.path.isfile(checkpoint_path):
         checkpoint = torch.load(checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
+        scheduler.load_state_dict(checkpoint['scheduler'])
         epoch = checkpoint['epoch']
-        print(f"=> successfully loaded checkpoint from '{checkpoint_path}'")
+        logger.info(f"=> successfully loaded checkpoint from '{checkpoint_path}'")
 
-    print('Start training...')
+#    optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr, betas=(0.9, 0.999))
+	
+    logger.info('Start training...')
+    optimizer.param_groups[0]['lr'] = 0.0004
+    epochs = 1500
     nx, ny = [0 for _ in range(10)], [0 for _ in range(10)]
     while epoch <= epochs + 1:
-        if epoch == 101:
-            tensor = [torch.tensor(sio.loadmat(f"models/models_mats/x_{i}.mat")['x']).to(device) for i in range(1, 11)]
+        if epoch == 840:
+            tensor = [torch.tensor(sio.loadmat(f"models_mats/x_{i}.mat")['x']).to(device) for i in range(1, 11)]
             for i in range(10):
                 nx[i], ny[i] = tensor[i].split([1, 1], dim=-1)
                 nx[i] = int(nx[i])
@@ -92,43 +102,43 @@ def train(config):
             loss.backward()
             optimizer.step()
         t_loss = np.nanmean(np.array(epoch_train_loss))
-        print('Epoch: {}/{} training loss: {:.7f}'.format(epochs, epoch, t_loss))  # print loss for each epoch
+        logger.info('Epoch: {}/{} training loss: {:.7f}'.format(epochs, epoch, t_loss))
         if epoch % ckpt == 0:
-            save_checkpoint(model, optimizer, epoch)
-        scheduler.step()  # 更新学习率
-        print("lr: ", optimizer.param_groups[0]['lr'])
+            save_checkpoint(model, optimizer, scheduler, epoch)
+        scheduler.step()
+        logger.info("lr: {}".format(optimizer.param_groups[0]['lr']))
         model.eval()
         with torch.no_grad():
             for iteration, batch in enumerate(validate_data_loader, 1):
                 gt, lms, pan = batch[0].to(device), batch[1].to(device), batch[4].to(device)
-                if training_model == 'RECTNET':
+                if training_model == 'RRConv':
                     output = model(pan, lms, epoch, *nx, *ny)
                 else:
                     output = model(pan, lms)
                 loss = criterion(output, gt)
                 epoch_val_loss.append(loss.item())
         v_loss = np.nanmean(np.array(epoch_val_loss))
-        print('validate loss: {:.7f}'.format(v_loss))
-        f = open('loss_ms.txt', 'a')
-        f.write(f'epoch: {epoch} | train_loss: {t_loss} | val_loss: {v_loss}\n')
+        logger.info('validate loss: {:.7f}'.format(v_loss))
+        with open('loss_ms.txt', 'a') as f:
+            f.write(f'epoch: {epoch} | train_loss: {t_loss} | val_loss: {v_loss}\n')
         wandb.log({"train_loss": t_loss, "val_loss": v_loss})
-        epoch = epoch + 1
+        epoch += 1
     wandb.finish()
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch_size", default=32, type=int,
                         help="Batch size used in the training and validation loop.")
     parser.add_argument("--epochs", default=1200, type=int, help="Total number of epochs.")
-    parser.add_argument("--lr", default=0.0008, type=float,
+    parser.add_argument("--lr", default=0.0006, type=float,
                         help="Base learning rate at the start of the training.")
     parser.add_argument("--ckpt", default=20, type=int, help="Save model every ckpt epochs.")
-    parser.add_argument("--train_set_path", default="/Data2/Datasets/PanCollection/training_data/train_wv3_9714.h5",
+    parser.add_argument("--train_set_path", default="training_data/train_wv3.h5",
                         type=str, help="Path to the training set.")
-    parser.add_argument("--validate_set_path", default="/Data2/Datasets/PanCollection/training_data/valid_wv3_9714.h5",
+    parser.add_argument("--validate_set_path", default="training_data/valid_wv3.h5",
                         type=str, help="Path to the validation set.")
-    parser.add_argument("--checkpoint_path", default="", type=str, help="Path to the checkpoint file.")
+    parser.add_argument("--checkpoint_path", default="checkpoints/checkpoint_840_2024-09-11-08-43-25.pth", type=str,
+                        help="Path to the checkpoint file.")
     parser.add_argument("--training_model", default="RRConv", type=str, help="Model to train.")
     config = parser.parse_args()
     wandb.login()

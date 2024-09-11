@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import scipy.io as sio
 import os
+from torch.nn import functional as F
 
 
 class mySin(torch.nn.Module):  # sin激活函数
@@ -14,18 +15,20 @@ class mySin(torch.nn.Module):  # sin激活函数
 
 
 class RectConv2d(nn.Module):
-    def __init__(self, inc, outc, kernel_size=3, padding=1, stride=1, l_max=8, w_max=8):
+    def __init__(self, inc, outc, kernel_size=3, padding=1, stride=1, l_max=9, w_max=9, flag=False, modulation=True):
         super(RectConv2d, self).__init__()
         self.lmax = l_max
         self.wmax = w_max
-        self.nmax = l_max * w_max
         self.inc = inc
         self.outc = outc
         self.kernel_size = kernel_size
         self.padding = padding
         self.stride = stride
         self.zero_padding = nn.ZeroPad2d(padding)
+        self.flag = flag
+        self.modulation = modulation
         self.i_list = [9, 15, 21, 25, 35, 49]
+
         self.convs = nn.ModuleList(
             [
                 nn.Conv3d(
@@ -34,6 +37,7 @@ class RectConv2d(nn.Module):
                 for i in self.i_list
             ]
         )
+
         self.m_conv = nn.Sequential(
             nn.Conv2d(inc, outc, kernel_size=3, padding=1, stride=stride),
             nn.ReLU(),
@@ -51,85 +55,107 @@ class RectConv2d(nn.Module):
         self.l_conv = nn.Sequential(
             nn.Conv2d(inc, inc, kernel_size=3, padding=1, stride=stride),
             nn.BatchNorm2d(inc),
-            mySin(),
+            nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Conv2d(inc, 1, kernel_size=3, padding=1, stride=stride),
-            nn.BatchNorm2d(1),
-            mySin(),
+            nn.Conv2d(inc, inc // 2, kernel_size=3, padding=1, stride=stride),
+            nn.BatchNorm2d(inc // 2),
+            nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Conv2d(1, 1, 1),
+            nn.Conv2d(inc // 2, 1, kernel_size=3, padding=1, stride=stride),
             nn.BatchNorm2d(1)
         )
         self.l_sig = nn.Sigmoid()
         self.w_conv = nn.Sequential(
             nn.Conv2d(inc, inc, kernel_size=3, padding=1, stride=stride),
             nn.BatchNorm2d(inc),
-            mySin(),
+            nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Conv2d(inc, 1, kernel_size=3, padding=1, stride=stride),
-            nn.BatchNorm2d(1),
-            mySin(),
+            nn.Conv2d(inc, inc // 2, kernel_size=3, padding=1, stride=stride),
+            nn.BatchNorm2d(inc // 2),
+            nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Conv2d(1, 1, 1),
+            nn.Conv2d(inc // 2, 1, kernel_size=3, padding=1, stride=stride),
             nn.BatchNorm2d(1)
         )
         self.w_sig = nn.Sigmoid()
         self.theta_conv = nn.Sequential(
             nn.Conv2d(inc, inc, kernel_size=3, padding=1, stride=stride),
             nn.BatchNorm2d(inc),
-            mySin(),
+            nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Conv2d(inc, 1, kernel_size=3, padding=1, stride=stride),
-            nn.BatchNorm2d(1),
-            mySin(),
+            nn.Conv2d(inc, inc // 2, kernel_size=3, padding=1, stride=stride),
+            nn.BatchNorm2d(inc // 2),
+            nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Conv2d(1, 1, 1),
+            nn.Conv2d(inc // 2, 1, kernel_size=3, padding=1, stride=stride),
             nn.BatchNorm2d(1),
-            nn.Softsign()
+            nn.Tanh()
         )
+        self.hook_handles = []
+        self.hook_handles.append(self.m_conv[0].register_full_backward_hook(self._set_lr))
+        self.hook_handles.append(self.b_conv[0].register_full_backward_hook(self._set_lr))
+        self.hook_handles.append(self.l_conv[0].register_full_backward_hook(self._set_lr))
+        self.hook_handles.append(self.l_conv[2].register_full_backward_hook(self._set_lr))
+        self.hook_handles.append(self.w_conv[0].register_full_backward_hook(self._set_lr))
+        self.hook_handles.append(self.w_conv[2].register_full_backward_hook(self._set_lr))
+        self.hook_handles.append(self.theta_conv[0].register_full_backward_hook(self._set_lr))
+        self.hook_handles.append(self.theta_conv[2].register_full_backward_hook(self._set_lr))
 
-        self.m_conv[0].register_full_backward_hook(self._set_lr)
-        self.b_conv[0].register_full_backward_hook(self._set_lr)
-        self.l_conv[0].register_full_backward_hook(self._set_lr)
-        self.l_conv[2].register_full_backward_hook(self._set_lr)
-        self.w_conv[0].register_full_backward_hook(self._set_lr)
-        self.w_conv[2].register_full_backward_hook(self._set_lr)
-        self.theta_conv[0].register_full_backward_hook(self._set_lr)
-        self.theta_conv[2].register_full_backward_hook(self._set_lr)
+        nn.init.kaiming_normal_(self.b_conv[0].weight, nonlinearity='relu')
+        nn.init.xavier_normal_(self.b_conv[3].weight)
+        nn.init.kaiming_normal_(self.m_conv[0].weight, nonlinearity='relu')
+        nn.init.xavier_normal_(self.m_conv[3].weight)
 
-        nn.init.constant_(self.m_conv[0].weight, 0)
-        nn.init.constant_(self.m_conv[3].weight, 0)
-        nn.init.constant_(self.b_conv[0].weight, 0)
-        nn.init.constant_(self.b_conv[3].weight, 0)
-        nn.init.constant_(self.l_conv[0].weight, 0)
-        nn.init.constant_(self.l_conv[4].weight, 0)
-        nn.init.constant_(self.l_conv[8].weight, 0)
-        nn.init.constant_(self.w_conv[0].weight, 0)
-        nn.init.constant_(self.w_conv[4].weight, 0)
-        nn.init.constant_(self.w_conv[8].weight, 0)
-        nn.init.constant_(self.theta_conv[0].weight, 0)
-        nn.init.constant_(self.theta_conv[4].weight, 0)
-        nn.init.constant_(self.theta_conv[8].weight, 0)
+        nn.init.kaiming_normal_(self.l_conv[0].weight, nonlinearity='relu')
+        nn.init.kaiming_normal_(self.l_conv[4].weight, nonlinearity='relu')
+        nn.init.xavier_normal_(self.l_conv[8].weight)
 
+        nn.init.kaiming_normal_(self.w_conv[0].weight, nonlinearity='relu')
+        nn.init.kaiming_normal_(self.w_conv[4].weight, nonlinearity='relu')
+        nn.init.xavier_normal_(self.w_conv[8].weight)
+
+        nn.init.kaiming_normal_(self.theta_conv[0].weight, nonlinearity='relu')
+        nn.init.kaiming_normal_(self.theta_conv[4].weight, nonlinearity='relu')
+        nn.init.xavier_normal_(self.theta_conv[8].weight)
+        
+        nn.init.kaiming_normal_(self.convs[0].weight, nonlinearity='relu')
+        nn.init.kaiming_normal_(self.convs[1].weight, nonlinearity='relu')
+        nn.init.kaiming_normal_(self.convs[2].weight, nonlinearity='relu')
+        nn.init.kaiming_normal_(self.convs[3].weight, nonlinearity='relu')
+        nn.init.kaiming_normal_(self.convs[4].weight, nonlinearity='relu')
+        nn.init.kaiming_normal_(self.convs[5].weight, nonlinearity='relu')
     @staticmethod
     def _set_lr(module, grad_input, grad_output):
         grad_input = tuple(g * 0.1 if g is not None else None for g in grad_input)
         grad_output = tuple(g * 0.1 if g is not None else None for g in grad_output)
         return grad_input
 
+    def remove_hooks(self):
+        for handle in self.hook_handles:
+            handle.remove()  # 移除钩子函数
+        self.hook_handles.clear()  # 清空句柄列表
+
     def forward(self, x, epoch, label, nx, ny):
         m = self.m_conv(x)
         bias = self.b_conv(x)
-        l = self.l_sig(self.l_conv(x)) * (self.lmax - 1) + 1  # b, 1, h, w
-        w = self.w_sig(self.w_conv(x)) * (self.wmax - 1) + 1  # b, 1, h, w
+        l = self.l_sig(self.l_conv(x) - 2) * (self.lmax - 1) + 1  # b, 1, h, w
+        w = self.w_sig(self.w_conv(x) - 2) * (self.wmax - 1) + 1  # b, 1, h, w
         theta = self.theta_conv(x) * 3.1415926  # b, 1, h, w
-
-        # mean_l = l.mean(dim=0).mean(dim=1).mean(dim=1)
-        # mean_w = w.mean(dim=0).mean(dim=1).mean(dim=1)
-        # mean_theta = theta.mean(dim=0).mean(dim=1).mean(dim=1)
-        # print(mean_l, mean_w, mean_theta)
-
-        if epoch < 100:
+        # flattern_l = l.view(-1)
+        # flattern_w = w.view(-1)
+        # flattern_theta = theta.view(-1)
+        # # mean_l = flattern_l.mean()
+        # # mean_w = flattern_w.mean()
+        # # mean_theta = flattern_theta.mean()
+        # var_l = flattern_l.var()
+        # var_w = flattern_w.var()
+        # var_theta = flattern_theta.var()
+        # # print(mean_l, mean_w, mean_theta)
+        # print(var_l, var_w, var_theta)
+        if self.flag:
+            tensor_x = theta.cpu().numpy()
+            sio.savemat("x.mat", {'x': tensor_x})
+        if epoch < 40:
             mean_l = l.mean(dim=0).mean(dim=1).mean(dim=1)
             mean_w = w.mean(dim=0).mean(dim=1).mean(dim=1)
             N_X = int(mean_l // 1)
@@ -142,7 +168,8 @@ class RectConv2d(nn.Module):
                 N_X = 3
             if N_Y < 3:
                 N_Y = 3
-        elif epoch == 100:
+
+        elif epoch == 40:
             mean_l = l.mean(dim=0).mean(dim=1).mean(dim=1)
             mean_w = w.mean(dim=0).mean(dim=1).mean(dim=1)
             N_X = int(mean_l // 1)
@@ -165,8 +192,9 @@ class RectConv2d(nn.Module):
         else:
             N_X = nx
             N_Y = ny
+            if epoch >= 500 and self.hook_handles:
+                self.remove_hooks()
         N = N_X * N_Y
-        # print(N_X, N_Y)
         l = l.repeat([1, N, 1, 1])
         w = w.repeat([1, N, 1, 1])
         offset = torch.cat((l, w), dim=1)
@@ -201,19 +229,18 @@ class RectConv2d(nn.Module):
             ],
             dim=-1,
         )
-
         # bilinear kernel (b, h, w, N)
         g_lt = (1 + (q_lt[..., :N].type_as(p) - p[..., :N])) * (
-            1 + (q_lt[..., N:].type_as(p) - p[..., N:])
+                1 + (q_lt[..., N:].type_as(p) - p[..., N:])
         )
         g_rb = (1 - (q_rb[..., :N].type_as(p) - p[..., :N])) * (
-            1 - (q_rb[..., N:].type_as(p) - p[..., N:])
+                1 - (q_rb[..., N:].type_as(p) - p[..., N:])
         )
         g_lb = (1 + (q_lb[..., :N].type_as(p) - p[..., :N])) * (
-            1 - (q_lb[..., N:].type_as(p) - p[..., N:])
+                1 - (q_lb[..., N:].type_as(p) - p[..., N:])
         )
         g_rt = (1 - (q_rt[..., :N].type_as(p) - p[..., :N])) * (
-            1 + (q_rt[..., N:].type_as(p) - p[..., N:])
+                1 + (q_rt[..., N:].type_as(p) - p[..., N:])
         )
         # (b, c, h, w, N)
         x_q_lt = self._get_x_q(x, q_lt, N)
@@ -222,16 +249,13 @@ class RectConv2d(nn.Module):
         x_q_rt = self._get_x_q(x, q_rt, N)
         # (b, c, h, w, N)
         x_offset = (
-            g_lt.unsqueeze(dim=1) * x_q_lt
-            + g_rb.unsqueeze(dim=1) * x_q_rb
-            + g_lb.unsqueeze(dim=1) * x_q_lb
-            + g_rt.unsqueeze(dim=1) * x_q_rt
+                g_lt.unsqueeze(dim=1) * x_q_lt
+                + g_rb.unsqueeze(dim=1) * x_q_rb
+                + g_lb.unsqueeze(dim=1) * x_q_lb
+                + g_rt.unsqueeze(dim=1) * x_q_rt
         )
         x_offset = self._reshape_x_offset(x_offset)
-
-        index = self.i_list.index(N)
-        conv = self.convs[index]
-        x_offset = conv(x_offset)
+        x_offset = self.convs[self.i_list.index(N)](x_offset)
         x_offset = torch.squeeze(x_offset, dim=2)
         out = x_offset * m + bias
         return out
@@ -292,3 +316,4 @@ class RectConv2d(nn.Module):
         b, c, h, w, N = x_offset.size()
         x_offset = x_offset.permute(0, 1, 4, 2, 3)
         return x_offset
+
