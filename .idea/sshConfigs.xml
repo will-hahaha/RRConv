@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="SshConfigs">
+    <configs>
+      <sshConfig authType="PASSWORD" host="region-45.autodl.pro" id="9ea39c63-fe26-47b0-abb5-09b79d5c1355" port="40330" nameFormat="DESCRIPTIVE" username="root" useOpenSSHConfig="true" />
+      <sshConfig authType="PASSWORD" host="connect.yza1.seetacloud.com" id="4d0ef527-b549-4e90-8768-8bffda872c34" port="14723" nameFormat="DESCRIPTIVE" username="root" useOpenSSHConfig="true" />
+    </configs>
+  </component>
+</project>

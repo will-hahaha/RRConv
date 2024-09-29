@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
+<<<<<<< HEAD
   <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.8 (torchcpu) (2)" project-jdk-type="Python SDK" />
+=======
+  <component name="Black">
+    <option name="sdkName" value="Remote Python 3.7.13 (sftp://office-401-remote@A660.u1stc.top:1331/home/office-401-1/.conda/envs/mmlab/bin/python3.7) (2)" />
+  </component>
+  <component name="ProjectRootManager" version="2" project-jdk-name="torchgpu" project-jdk-type="Python SDK" />
+>>>>>>> 6bf72a1 (重新搭建仓库，大改)
 </project>

@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="6号机" remoteFilesAllowedToDisappearOnAutoupload="false">
+  <component name="PublishConfigData">
     <serverData>
-      <paths name="6号机">
+      <paths name="root@connect.yza1.seetacloud.com:14723 password">
         <serverdata>
           <mappings>
-            <mapping deploy="/Data2/wxy/RRConv" local="$PROJECT_DIR$" web="/" />
+            <mapping local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>
-      <paths name="office-401-remote@A660.u1stc.top:1331 password">
+      <paths name="root@region-45.autodl.pro:40330 password">
         <serverdata>
           <mappings>
             <mapping local="$PROJECT_DIR$" web="/" />
@@ -17,6 +17,5 @@
         </serverdata>
       </paths>
     </serverData>
-    <option name="myAutoUpload" value="ALWAYS" />
   </component>
 </project>

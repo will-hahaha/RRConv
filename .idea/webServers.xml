@@ -2,10 +2,24 @@
 <project version="4">
   <component name="WebServers">
     <option name="servers">
+<<<<<<< HEAD
       <webServer id="2b658aec-5aa5-47a3-a619-956ea9915dfc" name="6号机">
         <fileTransfer accessType="SFTP" host="a660.u1stc.top" port="1336" sshConfigId="20de605f-d732-4487-b5f9-4033629c0462" sshConfig="office-401-remote@a660.u1stc.top:1336 password">
           <advancedOptions>
             <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+=======
+      <webServer id="464e2f32-aac9-4420-a48f-74540da2197f" name="region-45.autodl.pro">
+        <fileTransfer rootFolder="/wxy" accessType="SFTP" host="region-45.autodl.pro" port="40330" sshConfigId="9ea39c63-fe26-47b0-abb5-09b79d5c1355" sshConfig="root@region-45.autodl.pro:40330 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+      <webServer id="f546bfa4-42c4-4816-acf1-171d2b2cffd5" name="connect.yza1.seetacloud.com">
+        <fileTransfer rootFolder="/wxy" accessType="SFTP" host="connect.yza1.seetacloud.com" port="14723" sshConfigId="4d0ef527-b549-4e90-8768-8bffda872c34" sshConfig="root@connect.yza1.seetacloud.com:14723 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
+>>>>>>> 6bf72a1 (重新搭建仓库，大改)
           </advancedOptions>
         </fileTransfer>
       </webServer>

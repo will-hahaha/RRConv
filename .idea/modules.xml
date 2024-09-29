@@ -2,7 +2,11 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
+<<<<<<< HEAD
       <module fileurl="file://$PROJECT_DIR$/.idea/RRConv.iml" filepath="$PROJECT_DIR$/.idea/RRConv.iml" />
+=======
+      <module fileurl="file://$PROJECT_DIR$/.idea/RectConv.iml" filepath="$PROJECT_DIR$/.idea/RectConv.iml" />
+>>>>>>> 6bf72a1 (重新搭建仓库，大改)
     </modules>
   </component>
 </project>
