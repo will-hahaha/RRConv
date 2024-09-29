@@ -8,7 +8,7 @@ class RectB(nn.Module):
         super(RectB, self).__init__()
         self.flag = flag
         self.conv1 = RectConv2d(in_planes, in_planes, 3, 1, 1)
-        self.relu = nn.ReLU(inplace=True)
+        self.relu = nn.LeakyReLU(inplace=True)
         self.conv2 = RectConv2d(in_planes, in_planes, 3, 1, 1)
 
     def forward(self, x, epoch, label1, label2, nx1, ny1, nx2, ny2):

@@ -74,8 +74,8 @@ def train(config):
     print('Start training...')
     nx, ny = [0 for _ in range(10)], [0 for _ in range(10)]
     while epoch <= epochs + 1:
-        if epoch == 1000:
-            freeze_bn_layers(model)
+        #        if epoch == 340:
+        #            freeze_bn_layers(model)
         if epoch == 101:
             tensor = [torch.tensor(sio.loadmat(f"models_mats/x_{i}.mat")['x']).to(device) for i in range(1, 11)]
             for i in range(10):
@@ -132,7 +132,7 @@ if __name__ == '__main__':
                         help="Batch size used in the training and validation loop.")
     parser.add_argument("--epochs", default=1200, type=int, help="Total number of epochs.")
     parser.add_argument("--lr", default=0.0004, type=float, help="Base learning rate at the start of the training.")
-    parser.add_argument("--ckpt", default=5, type=int, help="Save model every ckpt epochs.")
+    parser.add_argument("--ckpt", default=10, type=int, help="Save model every ckpt epochs.")
     parser.add_argument("--train_set_path", default="/Data2/DataSet/pansharpening/training_data/train_wv3.h5", type=str,
                         help="Path to the training set.")
     parser.add_argument("--validate_set_path", default="/Data2/DataSet/pansharpening/validation_data/valid_wv3.h5",

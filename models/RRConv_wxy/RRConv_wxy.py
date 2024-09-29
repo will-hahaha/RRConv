@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import scipy.io as sio
 import os
-import torch.nn.functional as F
 
 
 class mySin(torch.nn.Module):  # sin激活函数
@@ -28,85 +27,68 @@ class RectConv2d(nn.Module):
         self.flag = flag
         self.modulation = modulation
 
-        self.i_list = [9, 15, 21, 25, 35, 49]
+        self.i_list = [33, 35, 53, 37, 73, 55, 57, 75, 77]
         self.convs = nn.ModuleList(
             [
-                nn.Conv3d(
-                    inc, outc, kernel_size=(i, 1, 1), stride=(i, 1, 1), bias=False
-                )
+                nn.Conv2d(inc, outc, kernel_size=(i // 10, i % 10), stride=(i // 10, i % 10), padding=0)
                 for i in self.i_list
             ]
         )
 
         self.m_conv = nn.Sequential(
             nn.Conv2d(inc, outc, kernel_size=3, padding=1, stride=stride),
-            mySin(),
+            nn.ReLU(),
             nn.Dropout(0.3),
             nn.Conv2d(outc, outc, kernel_size=3, padding=1, stride=stride),
-            mySin(),
+            nn.ReLU(),
             nn.Dropout(0.3),
             nn.Conv2d(outc, outc, kernel_size=3, padding=1, stride=stride),
-            nn.Sigmoid()
+            nn.Tanh()
         )
 
         self.b_conv = nn.Sequential(
             nn.Conv2d(inc, outc, kernel_size=3, padding=1, stride=stride),
-            mySin(),
+            nn.ReLU(),
             nn.Dropout(0.3),
             nn.Conv2d(outc, outc, kernel_size=3, padding=1, stride=stride),
-            mySin(),
+            nn.ReLU(),
             nn.Dropout(0.3),
             nn.Conv2d(outc, outc, kernel_size=3, padding=1, stride=stride)
         )
-        self.p_conv = nn.Sequential(
-            nn.Conv2d(inc, inc, kernel_size=3, padding=1, stride=stride),
-            nn.BatchNorm2d(inc),
-            mySin(),
-            nn.Conv2d(inc, inc // 2, kernel_size=3, padding=1, stride=stride),
-            nn.BatchNorm2d(inc // 2),
-            mySin()
-        )
-        self.l_conv = nn.Sequential(
-            nn.Conv2d(inc // 2, 1, kernel_size=3, padding=1, stride=stride),
-            nn.BatchNorm2d(1),
-            mySin(),
-            nn.Conv2d(1, 1, 1),
-            nn.BatchNorm2d(1),
-            nn.LeakyReLU()
-        )
-        self.l_sig = nn.Sigmoid()
-        self.w_conv = nn.Sequential(
-            nn.Conv2d(inc // 2, 1, kernel_size=3, padding=1, stride=stride),
-            nn.BatchNorm2d(1),
-            mySin(),
-            nn.Conv2d(1, 1, 1),
-            nn.BatchNorm2d(1),
-            nn.LeakyReLU()
-        )
-        self.w_sig = nn.Sigmoid()
-        self.theta_conv = nn.Sequential(
-            nn.Conv2d(inc // 2, 1, kernel_size=3, padding=1, stride=stride),
-            nn.BatchNorm2d(1),
-            mySin(),
-            nn.Conv2d(1, 1, 1),
-            nn.BatchNorm2d(1),
-            nn.Tanh()
-        )
 
-        if self.modulation:
-            self.m_convs = nn.ModuleList(
-                [
-                    nn.Conv2d(inc, i, kernel_size=3, padding=1, stride=stride)
-                    for i in self.i_list
-                ]
-            )
+        self.l_conv = nn.Sequential(
+            nn.Conv2d(inc, inc, kernel_size=3, padding=1, stride=stride),
+            nn.ReLU(),
+            nn.Conv2d(inc, inc, kernel_size=3, padding=1, stride=stride),
+            nn.ReLU(),
+            nn.Conv2d(inc, 1, kernel_size=3, padding=1, stride=stride),
+            nn.ReLU(),
+            nn.Conv2d(1, 1, 1),
+            nn.Sigmoid()
+        )
+        self.w_conv = nn.Sequential(
+            nn.Conv2d(inc, inc, kernel_size=3, padding=1, stride=stride),
+            nn.ReLU(),
+            nn.Conv2d(inc, inc, kernel_size=3, padding=1, stride=stride),
+            nn.ReLU(),
+            nn.Conv2d(inc, 1, kernel_size=3, padding=1, stride=stride),
+            nn.ReLU(),
+            nn.Conv2d(1, 1, 1),
+            nn.Sigmoid()
+        )
+        self.theta_conv = nn.Sequential(
+            nn.Conv2d(inc, inc, kernel_size=3, padding=1, stride=stride),
+            nn.ReLU(),
+            nn.Conv2d(inc, inc, kernel_size=3, padding=1, stride=stride),
+            nn.ReLU(),
+            nn.Conv2d(inc, 1, kernel_size=3, padding=1, stride=stride),
+            nn.ReLU(),
+            nn.Conv2d(1, 1, 1)
+        )
 
         self.hook_handles = []
-        self.hook_handles.append(self.b_conv[0].register_full_backward_hook(self._set_lr))
         self.hook_handles.append(self.m_conv[0].register_full_backward_hook(self._set_lr))
         self.hook_handles.append(self.b_conv[0].register_full_backward_hook(self._set_lr))
-        self.hook_handles.append(self.p_conv[0].register_full_backward_hook(self._set_lr))
-        self.hook_handles.append(self.p_conv[1].register_full_backward_hook(self._set_lr))
         self.hook_handles.append(self.l_conv[0].register_full_backward_hook(self._set_lr))
         self.hook_handles.append(self.l_conv[1].register_full_backward_hook(self._set_lr))
         self.hook_handles.append(self.w_conv[0].register_full_backward_hook(self._set_lr))
@@ -126,18 +108,17 @@ class RectConv2d(nn.Module):
         self.hook_handles.clear()  # 清空句柄列表
 
     def forward(self, x, epoch, label, nx, ny):
+        m = self.m_conv(x)
         bias = self.b_conv(x)
-        mm = self.m_conv(x)
-        offset = self.p_conv(x)
-        l = self.l_sig(self.l_conv(offset)) * (self.lmax - 1) + 1  # b, 1, h, w
-        w = self.w_sig(self.w_conv(offset)) * (self.wmax - 1) + 1  # b, 1, h, w
-        theta = self.theta_conv(offset) * 3.1415926
+        l = self.l_conv(x) * (self.lmax - 1) + 1  # b, 1, h, w
+        w = self.w_conv(x) * (self.wmax - 1) + 1  # b, 1, h, w
+        theta = self.theta_conv(x)
 
-        if epoch < 50:
+        if epoch < 100:
             N_X = 3
             N_Y = 3
 
-        elif epoch == 50:
+        elif epoch == 100:
             mean_l = l.mean(dim=0).mean(dim=1).mean(dim=1)
             mean_w = w.mean(dim=0).mean(dim=1).mean(dim=1)
             N_X = int(mean_l // 1)
@@ -157,24 +138,18 @@ class RectConv2d(nn.Module):
             if not os.path.exists(save_dir):
                 os.makedirs(save_dir)
             sio.savemat(save_path, {"x": tensor_x})
-
         else:
             N_X = nx
             N_Y = ny
-
+            if epoch >= 300 and self.hook_handles:
+                self.remove_hooks()
         N = N_X * N_Y
         l = l.repeat([1, N, 1, 1])
         w = w.repeat([1, N, 1, 1])
         offset = torch.cat((l, w), dim=1)
-
-        if self.modulation:
-            m = self.m_convs[self.i_list.index(N)](x)
-            m = torch.sigmoid(m)
-
         dtype = offset.data.type()
         if self.padding:
             x = self.zero_padding(x)
-
         p = self._get_p(offset, dtype, N_X, N_Y, theta)  # (b, 2*N, h, w)
         p = p.contiguous().permute(0, 2, 3, 1)  # (b, h, w, 2*N)
         q_lt = p.detach().floor()
@@ -203,6 +178,7 @@ class RectConv2d(nn.Module):
             ],
             dim=-1,
         )
+
         # bilinear kernel (b, h, w, N)
         g_lt = (1 + (q_lt[..., :N].type_as(p) - p[..., :N])) * (
                 1 + (q_lt[..., N:].type_as(p) - p[..., N:])
@@ -228,16 +204,10 @@ class RectConv2d(nn.Module):
                 + g_lb.unsqueeze(dim=1) * x_q_lb
                 + g_rt.unsqueeze(dim=1) * x_q_rt
         )
-        if self.modulation:
-            m = m.contiguous().permute(0, 2, 3, 1)
-            m = m.unsqueeze(dim=1)
-            m = torch.cat([m for _ in range(x_offset.size(1))], dim=1)
-            x_offset *= m
 
-        x_offset = self._reshape_x_offset(x_offset)
-        x_offset = self.convs[self.i_list.index(N)](x_offset)
-        x_offset = torch.squeeze(x_offset, dim=2)
-        out = x_offset * mm + bias
+        x_offset = self._reshape_x_offset(x_offset, N_X, N_Y)
+        x_offset = self.convs[self.i_list.index(N_X * 10 + N_Y)](x_offset)
+        out = m * x_offset + bias
         return out
 
     def _get_p_n(self, N, dtype, n_x, n_y):
@@ -292,7 +262,9 @@ class RectConv2d(nn.Module):
         return x_offset
 
     @staticmethod
-    def _reshape_x_offset(x_offset):
+    def _reshape_x_offset(x_offset, n_x, n_y):
         b, c, h, w, N = x_offset.size()
-        x_offset = x_offset.permute(0, 1, 4, 2, 3)
+        x_offset = torch.cat([x_offset[..., s:s + n_y].contiguous().view(b, c, h, w * n_y) for s in range(0, N, n_y)],
+                             dim=-1)
+        x_offset = x_offset.contiguous().view(b, c, h * n_x, w * n_y)
         return x_offset

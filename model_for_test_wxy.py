@@ -4,6 +4,16 @@ import scipy.io as sio
 import os
 import torch.nn.functional as F
 
+
+class mySin(torch.nn.Module):  # sin激活函数
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        x = torch.sin(x)
+        return x
+
+
 class RectConv2d(nn.Module):
     def __init__(self, inc, outc, kernel_size=3, padding=1, stride=1, l_max=9, w_max=9, flag=False, modulation=True):
         super(RectConv2d, self).__init__()
@@ -34,7 +44,7 @@ class RectConv2d(nn.Module):
             nn.ReLU(),
             nn.Dropout(0.3),
             nn.Conv2d(outc, outc, kernel_size=3, padding=1, stride=stride),
-            nn.Sigmoid()
+            nn.Tanh()
         )
 
         self.b_conv = nn.Sequential(
@@ -47,58 +57,45 @@ class RectConv2d(nn.Module):
             nn.Conv2d(outc, outc, kernel_size=3, padding=1, stride=stride)
         )
 
-        self.p_conv = nn.Sequential(
+        self.l_conv = nn.Sequential(
             nn.Conv2d(inc, inc, kernel_size=3, padding=1, stride=stride),
             nn.ReLU(),
-            nn.BatchNorm2d(inc),
-            nn.Dropout(0.2),
-            nn.Conv2d(inc, inc // 2, kernel_size=3, padding=1, stride=stride),
+            nn.Conv2d(inc, inc, kernel_size=3, padding=1, stride=stride),
             nn.ReLU(),
-            nn.BatchNorm2d(inc // 2),
-            nn.Dropout(0.2)
-        )
-        self.l_conv = nn.Sequential(
-            nn.Conv2d(inc // 2, 1, kernel_size=3, padding=1, stride=stride),
+            nn.Conv2d(inc, 1, kernel_size=3, padding=1, stride=stride),
             nn.ReLU(),
-            nn.BatchNorm2d(1),
-            nn.Dropout(0.2),
             nn.Conv2d(1, 1, 1),
-            nn.ReLU(),
-            nn.BatchNorm2d(1)
+            nn.Sigmoid()
         )
-        self.l_sig = nn.Sigmoid()
         self.w_conv = nn.Sequential(
-            nn.Conv2d(inc // 2, 1, kernel_size=3, padding=1, stride=stride),
+            nn.Conv2d(inc, inc, kernel_size=3, padding=1, stride=stride),
             nn.ReLU(),
-            nn.BatchNorm2d(1),
-            nn.Dropout(0.2),
+            nn.Conv2d(inc, inc, kernel_size=3, padding=1, stride=stride),
+            nn.ReLU(),
+            nn.Conv2d(inc, 1, kernel_size=3, padding=1, stride=stride),
+            nn.ReLU(),
             nn.Conv2d(1, 1, 1),
-            nn.ReLU(),
-            nn.BatchNorm2d(1)
+            nn.Sigmoid()
         )
-        self.w_sig = nn.Sigmoid()
         self.theta_conv = nn.Sequential(
-            nn.Conv2d(inc // 2, 1, kernel_size=3, padding=1, stride=stride),
+            nn.Conv2d(inc, inc, kernel_size=3, padding=1, stride=stride),
             nn.ReLU(),
-            nn.BatchNorm2d(1),
-            nn.Dropout(0.2),
-            nn.Conv2d(1, 1, 1),
-            nn.BatchNorm2d(1),
-            nn.Tanh()
+            nn.Conv2d(inc, inc, kernel_size=3, padding=1, stride=stride),
+            nn.ReLU(),
+            nn.Conv2d(inc, 1, kernel_size=3, padding=1, stride=stride),
+            nn.ReLU(),
+            nn.Conv2d(1, 1, 1)
         )
 
         self.hook_handles = []
         self.hook_handles.append(self.m_conv[0].register_full_backward_hook(self._set_lr))
         self.hook_handles.append(self.b_conv[0].register_full_backward_hook(self._set_lr))
-        self.hook_handles.append(self.p_conv[0].register_full_backward_hook(self._set_lr))
-        self.hook_handles.append(self.p_conv[1].register_full_backward_hook(self._set_lr))
         self.hook_handles.append(self.l_conv[0].register_full_backward_hook(self._set_lr))
         self.hook_handles.append(self.l_conv[1].register_full_backward_hook(self._set_lr))
         self.hook_handles.append(self.w_conv[0].register_full_backward_hook(self._set_lr))
         self.hook_handles.append(self.w_conv[1].register_full_backward_hook(self._set_lr))
         self.hook_handles.append(self.theta_conv[0].register_full_backward_hook(self._set_lr))
         self.hook_handles.append(self.theta_conv[1].register_full_backward_hook(self._set_lr))
-
 
     @staticmethod
     def _set_lr(module, grad_input, grad_output):
@@ -114,10 +111,9 @@ class RectConv2d(nn.Module):
     def forward(self, x, epoch, label, nx, ny):
         m = self.m_conv(x)
         bias = self.b_conv(x)
-        offset = self.p_conv(x)
-        l = self.l_sig(self.l_conv(offset)) * (self.lmax - 1) + 1  # b, 1, h, w
-        w = self.w_sig(self.w_conv(offset)) * (self.wmax - 1) + 1  # b, 1, h, w
-        theta = self.theta_conv(offset) * 3.1415926
+        l = self.l_conv(x) * (self.lmax - 1) + 1  # b, 1, h, w
+        w = self.w_conv(x) * (self.wmax - 1) + 1  # b, 1, h, w
+        theta = self.theta_conv(x)
 
         if epoch < 100:
             N_X = 3
@@ -143,13 +139,11 @@ class RectConv2d(nn.Module):
             if not os.path.exists(save_dir):
                 os.makedirs(save_dir)
             sio.savemat(save_path, {"x": tensor_x})
-
         else:
             N_X = nx
             N_Y = ny
             if epoch >= 300 and self.hook_handles:
                 self.remove_hooks()
-
         N = N_X * N_Y
         print(N_X, N_Y)
         l = l.repeat([1, N, 1, 1])
@@ -282,7 +276,7 @@ class RectB(nn.Module):
         super(RectB, self).__init__()
         self.flag = flag
         self.conv1 = RectConv2d(in_planes, in_planes, 3, 1, 1)
-        self.relu = nn.ReLU(inplace=True)
+        self.relu = nn.LeakyReLU(inplace=True)
         self.conv2 = RectConv2d(in_planes, in_planes, 3, 1, 1)
 
     def forward(self, x, epoch, label1, label2, nx1, ny1, nx2, ny2):
@@ -312,8 +306,6 @@ class ConvDown(nn.Module):
 
     def forward(self, x):
         return self.conv(x)
-
-
 
 class ConvUp(nn.Module):
     def __init__(self, in_channels, dsconv=True, *args, **kwargs) -> None:
