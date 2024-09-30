@@ -34,6 +34,7 @@ class RectConv2d(nn.Module):
                 for i in self.i_list
             ]
         )
+
         self.m_conv = nn.Sequential(
             nn.Conv2d(inc, outc, kernel_size=3, padding=1, stride=stride),
             nn.ReLU(),
@@ -66,6 +67,7 @@ class RectConv2d(nn.Module):
             nn.BatchNorm2d(1),
         )
         self.l_sig = nn.Sigmoid()
+
         self.w_conv = nn.Sequential(
             nn.Conv2d(inc, 1, kernel_size=3, padding=1, stride=stride),
             nn.BatchNorm2d(1),
@@ -74,6 +76,7 @@ class RectConv2d(nn.Module):
             nn.BatchNorm2d(1),
         )
         self.w_sig = nn.Sigmoid()
+
         self.theta_conv = nn.Sequential(
             nn.Conv2d(inc, 1, kernel_size=3, padding=1, stride=stride),
             nn.BatchNorm2d(1),
@@ -107,8 +110,8 @@ class RectConv2d(nn.Module):
         m = self.m_conv(x)
         bias = self.b_conv(x)
         offset = self.p_conv(x)
-        l = self.l_sig(self.l_conv(offset) - 5) * 48.5 + 1.5
-        w = self.w_sig(self.w_conv(offset) - 5) * 48.5 + 1.5
+        l = self.l_sig(self.l_conv(offset)) * 8 + 1
+        w = self.w_sig(self.w_conv(offset)) * 8 + 1
         theta = self.theta_conv(offset)
         mean_l = l.mean(dim=0).mean(dim=1).mean(dim=1)
         mean_w = w.mean(dim=0).mean(dim=1).mean(dim=1)
