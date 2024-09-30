@@ -34,8 +34,6 @@ class RectConv2d(nn.Module):
                 for i in self.i_list
             ]
         )
-
-        self.average_pool = nn.AvgPool2d(kernel_size=2, stride=1, padding=1)
         self.m_conv = nn.Sequential(
             nn.Conv2d(inc, outc, kernel_size=3, padding=1, stride=stride),
             nn.ReLU(),
@@ -66,18 +64,16 @@ class RectConv2d(nn.Module):
             nn.ReLU(),
             nn.Conv2d(1, 1, 1),
             nn.BatchNorm2d(1),
-            nn.Sigmoid()
         )
-
+        self.l_sig = nn.Sigmoid()
         self.w_conv = nn.Sequential(
             nn.Conv2d(inc, 1, kernel_size=3, padding=1, stride=stride),
             nn.BatchNorm2d(1),
             nn.ReLU(),
             nn.Conv2d(1, 1, 1),
             nn.BatchNorm2d(1),
-            nn.Sigmoid()
         )
-
+        self.w_sig = nn.Sigmoid()
         self.theta_conv = nn.Sequential(
             nn.Conv2d(inc, 1, kernel_size=3, padding=1, stride=stride),
             nn.BatchNorm2d(1),
@@ -108,45 +104,30 @@ class RectConv2d(nn.Module):
         self.hook_handles.clear()  # 清空句柄列表
 
     def forward(self, x, epoch, label, nx, ny):
-        xx = self.average_pool(x)
-        m = self.m_conv(xx)
-        bias = self.b_conv(xx)
-        offset = self.p_conv(xx)
-        l = self.l_conv(offset) * (self.lmax - 1) + 1  # b, 1, h, w
-        w = self.w_conv(offset) * (self.wmax - 1) + 1  # b, 1, h, w
+        m = self.m_conv(x)
+        bias = self.b_conv(x)
+        offset = self.p_conv(x)
+        l = self.l_sig(self.l_conv(offset) - 5) * 48.5 + 1.5
+        w = self.w_sig(self.w_conv(offset) - 5) * 48.5 + 1.5
         theta = self.theta_conv(offset)
-
-        if epoch < 100:
+        mean_l = l.mean(dim=0).mean(dim=1).mean(dim=1)
+        mean_w = w.mean(dim=0).mean(dim=1).mean(dim=1)
+        N_X = int(mean_l // 1)
+        N_Y = int(mean_w // 1)
+        if N_X % 2 == 0:
+            N_X += 1
+        if N_Y % 2 == 0:
+            N_Y += 1
+        if N_X < 3:
             N_X = 3
+        if N_Y < 3:
             N_Y = 3
-
-        elif epoch == 100:
-            mean_l = l.mean(dim=0).mean(dim=1).mean(dim=1)
-            mean_w = w.mean(dim=0).mean(dim=1).mean(dim=1)
-            N_X = int(mean_l // 1)
-            N_Y = int(mean_w // 1)
-            if N_X % 2 == 0:
-                N_X -= 1
-            if N_Y % 2 == 0:
-                N_Y -= 1
-            if N_X < 3:
-                N_X = 3
-            if N_Y < 3:
-                N_Y = 3
-            tensor_x = torch.tensor([N_X, N_Y], dtype=torch.float32).cuda()
-            tensor_x = tensor_x.cpu().numpy()
-            save_path = "models_mats/x_" + str(label) + ".mat"
-            save_dir = os.path.dirname(save_path)
-            if not os.path.exists(save_dir):
-                os.makedirs(save_dir)
-            sio.savemat(save_path, {"x": tensor_x})
-
-        else:
-            N_X = nx
-            N_Y = ny
-            if epoch >= 300 and self.hook_handles:
-                self.remove_hooks()
-
+        if N_X > 7:
+            N_X = 7
+        if N_Y > 7:
+            N_Y = 7
+        if epoch >= 300 and self.hook_handles:
+            self.remove_hooks()
         N = N_X * N_Y
         l = l.repeat([1, N, 1, 1])
         w = w.repeat([1, N, 1, 1])
