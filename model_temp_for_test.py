@@ -1,15 +1,9 @@
+import torch.nn.functional as F
 import torch
 import torch.nn as nn
 import scipy.io as sio
 import os
-import torch.nn.functional as F
-class mySin(torch.nn.Module):  # sin激活函数
-    def __init__(self):
-        super().__init__()
 
-    def forward(self, x):
-        x = torch.sin(x)
-        return x
 
 class RectConv2d(nn.Module):
     def __init__(self, inc, outc, kernel_size=3, padding=1, stride=1, l_max=9, w_max=9, flag=False, modulation=True):
@@ -24,7 +18,9 @@ class RectConv2d(nn.Module):
         self.zero_padding = nn.ZeroPad2d(padding)
         self.flag = flag
         self.modulation = modulation
+
         self.i_list = [33, 35, 53, 37, 73, 55, 57, 75, 77]
+
         self.convs = nn.ModuleList(
             [
                 nn.Conv2d(inc, outc, kernel_size=(i // 10, i % 10), stride=(i // 10, i % 10), padding=0)
@@ -32,43 +28,55 @@ class RectConv2d(nn.Module):
             ]
         )
 
-        self.b_conv = nn.Sequential(
-            nn.Conv2d(inc, outc, kernel_size=3, padding=1, stride=stride),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.3),
-            nn.Conv2d(outc, outc, kernel_size=3, padding=1, stride=stride)
-        )
-
         self.m_conv = nn.Sequential(
             nn.Conv2d(inc, outc, kernel_size=3, padding=1, stride=stride),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
             nn.Dropout(0.3),
             nn.Conv2d(outc, outc, kernel_size=3, padding=1, stride=stride),
             nn.Tanh()
         )
 
-        self.p_conv = nn.Sequential(
-            nn.Conv2d(inc, inc, kernel_size=3, padding=1, stride=stride),
+        self.b_conv = nn.Sequential(
+            nn.Conv2d(inc, outc, kernel_size=3, padding=1, stride=stride),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Conv2d(inc, inc, kernel_size=3, padding=1, stride=stride)
+            nn.Conv2d(outc, outc, kernel_size=3, padding=1, stride=stride)
+        )
+
+        self.p_conv = nn.Sequential(
+            nn.Conv2d(inc, inc, kernel_size=3, padding=1, stride=stride),
+            nn.BatchNorm2d(inc),
+            nn.ReLU(),
+            nn.Conv2d(inc, inc, kernel_size=3, padding=1, stride=stride),
+            nn.BatchNorm2d(inc),
+            nn.ReLU()
         )
 
         self.l_conv = nn.Sequential(
             nn.Conv2d(inc, 1, kernel_size=3, padding=1, stride=stride),
+            nn.BatchNorm2d(1),
             nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Conv2d(1, 1, 1)
+            nn.Conv2d(1, 1, 1),
+            nn.BatchNorm2d(1),
+            nn.Sigmoid()
         )
 
-        self.l_sig = nn.Sigmoid()
         self.w_conv = nn.Sequential(
             nn.Conv2d(inc, 1, kernel_size=3, padding=1, stride=stride),
+            nn.BatchNorm2d(1),
             nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Conv2d(1, 1, 1)
+            nn.Conv2d(1, 1, 1),
+            nn.BatchNorm2d(1),
+            nn.Sigmoid()
         )
-        self.w_sig = nn.Sigmoid()
+
+        self.theta_conv = nn.Sequential(
+            nn.Conv2d(inc, 1, kernel_size=3, padding=1, stride=stride),
+            nn.BatchNorm2d(1),
+            nn.ReLU(),
+            nn.Conv2d(1, 1, 1),
+            nn.BatchNorm2d(1)
+        )
 
         self.hook_handles = []
         self.hook_handles.append(self.p_conv[0].register_full_backward_hook(self._set_lr))
@@ -77,6 +85,8 @@ class RectConv2d(nn.Module):
         self.hook_handles.append(self.l_conv[1].register_full_backward_hook(self._set_lr))
         self.hook_handles.append(self.w_conv[0].register_full_backward_hook(self._set_lr))
         self.hook_handles.append(self.w_conv[1].register_full_backward_hook(self._set_lr))
+        self.hook_handles.append(self.theta_conv[0].register_full_backward_hook(self._set_lr))
+        self.hook_handles.append(self.theta_conv[1].register_full_backward_hook(self._set_lr))
 
     @staticmethod
     def _set_lr(module, grad_input, grad_output):
@@ -90,17 +100,30 @@ class RectConv2d(nn.Module):
         self.hook_handles.clear()  # 清空句柄列表
 
     def forward(self, x, epoch, label, nx, ny):
-        bias = self.b_conv(x)
         m = self.m_conv(x)
+        bias = self.b_conv(x)
         offset = self.p_conv(x)
-        l = self.l_sig(self.l_conv(offset)) * 8 + 1  # b, 1, h, w
-        w = self.w_sig(self.w_conv(offset)) * 8 + 1  # b, 1, h, w
+        l = self.l_conv(offset) * (self.lmax - 1) + 1  # b, 1, h, w
+        w = self.w_conv(offset) * (self.wmax - 1) + 1  # b, 1, h, w
+        theta = self.theta_conv(offset)
 
-        if epoch < 100:
-            N_X = 3
-            N_Y = 3
+        if epoch < 10000:
+            mean_l = l.mean(dim=0).mean(dim=1).mean(dim=1)
+            mean_w = w.mean(dim=0).mean(dim=1).mean(dim=1)
+            N_X = int(mean_l // 1)
+            N_Y = int(mean_w // 1)
+            if N_X % 2 == 0:
+                N_X -= 1
+            if N_Y % 2 == 0:
+                N_Y -= 1
+            if N_X < 3:
+                N_X = 3
+            if N_Y < 3:
+                N_Y = 3
+            if epoch >= 300 and self.hook_handles:
+                self.remove_hooks()
 
-        elif epoch == 100:
+        elif epoch == 10000:
             mean_l = l.mean(dim=0).mean(dim=1).mean(dim=1)
             mean_w = w.mean(dim=0).mean(dim=1).mean(dim=1)
             N_X = int(mean_l // 1)
@@ -135,7 +158,7 @@ class RectConv2d(nn.Module):
         dtype = offset.data.type()
         if self.padding:
             x = self.zero_padding(x)
-        p = self._get_p(offset, dtype, N_X, N_Y)  # (b, 2*N, h, w)
+        p = self._get_p(offset, dtype, N_X, N_Y, theta)  # (b, 2*N, h, w)
         p = p.contiguous().permute(0, 2, 3, 1)  # (b, h, w, 2*N)
         q_lt = p.detach().floor()
         q_rb = q_lt + 1
@@ -163,6 +186,7 @@ class RectConv2d(nn.Module):
             ],
             dim=-1,
         )
+
         # bilinear kernel (b, h, w, N)
         g_lt = (1 + (q_lt[..., :N].type_as(p) - p[..., :N])) * (
                 1 + (q_lt[..., N:].type_as(p) - p[..., N:])
@@ -188,9 +212,10 @@ class RectConv2d(nn.Module):
                 + g_lb.unsqueeze(dim=1) * x_q_lb
                 + g_rt.unsqueeze(dim=1) * x_q_rt
         )
+
         x_offset = self._reshape_x_offset(x_offset, N_X, N_Y)
         x_offset = self.convs[self.i_list.index(N_X * 10 + N_Y)](x_offset)
-        out = x_offset * m + bias
+        out = m * x_offset + bias
         return out
 
     def _get_p_n(self, N, dtype, n_x, n_y):
@@ -212,7 +237,7 @@ class RectConv2d(nn.Module):
         p_0 = torch.cat([p_0_x, p_0_y], 1).type(dtype)
         return p_0
 
-    def _get_p(self, offset, dtype, n_x, n_y):
+    def _get_p(self, offset, dtype, n_x, n_y, theta):
         N, h, w = offset.size(1) // 2, offset.size(2), offset.size(3)
         L, W = offset.split([N, N], dim=1)
         L = L / n_x
@@ -220,6 +245,10 @@ class RectConv2d(nn.Module):
         offsett = torch.cat([L, W], dim=1)
         p_n = self._get_p_n(N, dtype, n_x, n_y)
         p_n = p_n.repeat([1, 1, h, w])
+        p_x, p_y = p_n.split([N, N], dim=1)
+        p_xx = p_x * torch.cos(theta) - p_y * torch.sin(theta)
+        p_yy = p_x * torch.sin(theta) + p_y * torch.cos(theta)
+        p_n = torch.cat([p_xx, p_yy], dim=1)  # b, 2N, h, w
         p_0 = self._get_p_0(h, w, N, dtype)
         p = p_0 + offsett * p_n
         return p
