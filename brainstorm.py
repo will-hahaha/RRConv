@@ -4,6 +4,7 @@ import scipy.io as sio
 import os
 import torch.nn.functional as F
 
+
 class mySin(torch.nn.Module):  # sin激活函数
     def __init__(self):
         super().__init__()
@@ -11,6 +12,7 @@ class mySin(torch.nn.Module):  # sin激活函数
     def forward(self, x):
         x = torch.sin(x)
         return x
+
 
 class RectConv2d(nn.Module):
     def __init__(self, inc, outc, kernel_size=3, padding=1, stride=1, l_max=9, w_max=9, flag=False, modulation=True):
@@ -37,63 +39,23 @@ class RectConv2d(nn.Module):
 
         self.m_conv = nn.Sequential(
             nn.Conv2d(inc, outc, kernel_size=3, padding=1, stride=stride),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Conv2d(outc, outc, kernel_size=3, padding=1, stride=stride),
             nn.Tanh()
         )
-
-        self.b_conv = nn.Sequential(
-            nn.Conv2d(inc, outc, kernel_size=3, padding=1, stride=stride),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Conv2d(outc, outc, kernel_size=3, padding=1, stride=stride)
-        )
-
-        self.p_conv = nn.Sequential(
-            nn.Conv2d(inc, inc, kernel_size=3, padding=1, stride=stride),
-            nn.BatchNorm2d(inc),
-            nn.ReLU(),
-            nn.Conv2d(inc, inc, kernel_size=3, padding=1, stride=stride),
-            nn.BatchNorm2d(inc),
-            nn.ReLU()
-        )
-
+        self.b_conv = nn.Conv2d(inc, outc, kernel_size=3, padding=1, stride=stride)
         self.l_conv = nn.Sequential(
             nn.Conv2d(inc, 1, kernel_size=3, padding=1, stride=stride),
-            nn.BatchNorm2d(1),
-            nn.ReLU(),
-            nn.Conv2d(1, 1, 1),
-            nn.BatchNorm2d(1),
+            nn.Sigmoid()
         )
-        self.l_sig = nn.Sigmoid()
-
         self.w_conv = nn.Sequential(
             nn.Conv2d(inc, 1, kernel_size=3, padding=1, stride=stride),
-            nn.BatchNorm2d(1),
-            nn.ReLU(),
-            nn.Conv2d(1, 1, 1),
-            nn.BatchNorm2d(1),
+            nn.Sigmoid()
         )
-        self.w_sig = nn.Sigmoid()
-
-        self.theta_conv = nn.Sequential(
-            nn.Conv2d(inc, 1, kernel_size=3, padding=1, stride=stride),
-            nn.BatchNorm2d(1),
-            nn.ReLU(),
-            nn.Conv2d(1, 1, 1),
-            nn.BatchNorm2d(1)
-        )
+        self.theta_conv = nn.Conv2d(inc, 1, kernel_size=3, padding=1, stride=stride)
 
         self.hook_handles = []
-        self.hook_handles.append(self.p_conv[0].register_full_backward_hook(self._set_lr))
-        self.hook_handles.append(self.p_conv[1].register_full_backward_hook(self._set_lr))
         self.hook_handles.append(self.l_conv[0].register_full_backward_hook(self._set_lr))
-        self.hook_handles.append(self.l_conv[1].register_full_backward_hook(self._set_lr))
         self.hook_handles.append(self.w_conv[0].register_full_backward_hook(self._set_lr))
-        self.hook_handles.append(self.w_conv[1].register_full_backward_hook(self._set_lr))
         self.hook_handles.append(self.theta_conv[0].register_full_backward_hook(self._set_lr))
-        self.hook_handles.append(self.theta_conv[1].register_full_backward_hook(self._set_lr))
 
     @staticmethod
     def _set_lr(module, grad_input, grad_output):
@@ -109,28 +71,24 @@ class RectConv2d(nn.Module):
     def forward(self, x, epoch, label, nx, ny):
         m = self.m_conv(x)
         bias = self.b_conv(x)
-        offset = self.p_conv(x)
-        l = self.l_sig(self.l_conv(offset)) * 8 + 1
-        w = self.w_sig(self.w_conv(offset)) * 8 + 1
-        theta = self.theta_conv(offset)
+        l = self.l_conv(x) * 8 + 1
+        w = self.w_conv(x) * 8 + 1
+        theta = self.theta_conv(x)
         mean_l = l.mean(dim=0).mean(dim=1).mean(dim=1)
         mean_w = w.mean(dim=0).mean(dim=1).mean(dim=1)
         N_X = int(mean_l // 1)
         N_Y = int(mean_w // 1)
         if N_X % 2 == 0:
-            N_X += 1
+            N_X -= 1
         if N_Y % 2 == 0:
-            N_Y += 1
+            N_Y -= 1
         if N_X < 3:
             N_X = 3
         if N_Y < 3:
             N_Y = 3
-        if N_X > 7:
-            N_X = 7
-        if N_Y > 7:
-            N_Y = 7
         if epoch >= 300 and self.hook_handles:
             self.remove_hooks()
+
         N = N_X * N_Y
         l = l.repeat([1, N, 1, 1])
         w = w.repeat([1, N, 1, 1])
